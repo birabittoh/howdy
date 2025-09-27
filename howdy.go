@@ -16,6 +16,7 @@ type Config struct {
 	directory string
 	file      string
 	id        int
+	braille   bool
 	symbols   string
 	grayscale bool
 	width     int
@@ -35,8 +36,11 @@ func parseFlags() *Config {
 	flag.IntVar(&config.id, "i", 0, "fetch and convert XKCD comic with the given ID")
 	flag.IntVar(&config.id, "id", 0, "fetch and convert XKCD comic with the given ID")
 
-	flag.StringVar(&config.symbols, "s", "", "string with allowed symbols (otherwise, uses braille)")
-	flag.StringVar(&config.symbols, "symbols", "", "string with allowed symbols (otherwise, uses braille)")
+	flag.BoolVar(&config.braille, "b", false, "use braille characters for higher resolution")
+	flag.BoolVar(&config.braille, "braille", false, "use braille characters for higher resolution")
+
+	flag.StringVar(&config.symbols, "s", "", "string with allowed symbols")
+	flag.StringVar(&config.symbols, "symbols", "", "string with allowed symbols")
 
 	flag.BoolVar(&config.grayscale, "g", false, "disable color output")
 	flag.BoolVar(&config.grayscale, "grayscale", false, "disable color output")
@@ -55,20 +59,21 @@ func parseFlags() *Config {
 }
 
 func printHelp() {
-	fmt.Println("ASCII Image Converter")
-	fmt.Println("Usage: ascii-converter [OPTIONS]")
+	fmt.Println("howdy - Display XKCD comics or your own images as ASCII art in the terminal")
+	fmt.Println("Usage: howdy [OPTIONS]")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  -d, --directory DIR    Serve a random image from the specified directory")
 	fmt.Println("  -f, --file FILE        Convert a given file")
-	fmt.Println("  -i, --id ID 		      Fetch and convert XKCD comic with the given ID")
-	fmt.Println("  -s, --symbols STRING   String with allowed symbols (otherwise, uses braille)")
+	fmt.Println("  -i, --id ID            Fetch and convert XKCD comic with the given ID")
+	fmt.Println("  -b, --braille          Use braille characters for higher resolution")
+	fmt.Println("  -s, --symbols STRING   String with allowed symbols")
 	fmt.Println("  -g, --grayscale        Disable color output")
 	fmt.Println("  -w, --width WIDTH      Set the image width")
 	fmt.Println("  -h, --height HEIGHT    Set the image height")
 	fmt.Println("      --help             Print this help text")
 	fmt.Println()
-	fmt.Println("If no options are provided, fetches XKCD comic #614 by default.")
+	fmt.Println("If no options are provided, howdy fetches the latest XKCD comic by default.")
 }
 
 func getLatestComic() (path string, err error) {
@@ -119,6 +124,7 @@ func getRandomImageFromDir(dir string) (string, error) {
 
 func convertToASCII(imagePath string, config *Config) (string, error) {
 	flags := aic_package.DefaultFlags()
+	flags.Dither = true
 
 	// Set dimensions
 	if config.width > 0 {
@@ -128,24 +134,23 @@ func convertToASCII(imagePath string, config *Config) (string, error) {
 		flags.Height = config.height
 	}
 
-	// If no dimensions specified, use default width
 	if config.width == 0 && config.height == 0 {
-		flags.Width = 100
-		flags.Height = 0 // Maintain aspect ratio
+		flags.Full = true
 	}
 
 	// Set color/grayscale
 	flags.Colored = !config.grayscale
+	flags.Grayscale = config.grayscale
+	flags.Dither = true
+	flags.Braille = false
+	flags.Complex = true
 
 	// Set symbols vs braille
 	if config.symbols != "" {
-		flags.Braille = false
 		flags.CustomMap = config.symbols
-	} else {
+	} else if config.braille {
 		flags.Braille = true
 	}
-
-	flags.Complex = true
 
 	return aic_package.Convert(imagePath, flags)
 }
@@ -181,7 +186,6 @@ func main() {
 		}
 
 	default:
-		// Default behavior: fetch latest XKCD comic
 		imagePath, err = getLatestComic()
 		if err != nil {
 			fmt.Printf("Error fetching comic: %v\n", err)
