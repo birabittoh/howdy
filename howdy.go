@@ -90,11 +90,11 @@ type Image struct {
 	Path   string
 }
 
-// Download image to /tmp with caching
+// Download image to tempDir with caching
 func downloadImage(comic *xkcd.Comic) (*Image, error) {
 	extension := filepath.Ext(comic.ImageURL)
 	filename := fmt.Sprintf("xkcd_%d%s", comic.Number, extension)
-	filepath := filepath.Join("/tmp", filename)
+	filepath := filepath.Join(os.TempDir(), filename)
 
 	image := &Image{
 		Number: comic.Number,
