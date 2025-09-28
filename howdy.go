@@ -5,7 +5,10 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/TheZoraiz/ascii-image-converter/aic_package"
@@ -22,6 +25,7 @@ type Config struct {
 	width     int
 	height    int
 	help      bool
+	direct    bool
 }
 
 func parseFlags() *Config {
@@ -51,6 +55,8 @@ func parseFlags() *Config {
 	flag.IntVar(&config.height, "h", 0, "set the image height")
 	flag.IntVar(&config.height, "height", 0, "set the image height")
 
+	flag.BoolVar(&config.direct, "direct", false, "display image directly in terminal")
+
 	flag.BoolVar(&config.help, "help", false, "print this help text")
 
 	flag.Parse()
@@ -59,7 +65,7 @@ func parseFlags() *Config {
 }
 
 func printHelp() {
-	fmt.Println("howdy - Display XKCD comics or your own images as ASCII art in the terminal")
+	fmt.Println("howdy - Displays XKCD comics or your own images in the terminal.")
 	fmt.Println("Usage: howdy [OPTIONS]")
 	fmt.Println()
 	fmt.Println("Options:")
@@ -71,32 +77,89 @@ func printHelp() {
 	fmt.Println("  -g, --grayscale        Disable color output")
 	fmt.Println("  -w, --width WIDTH      Set the image width")
 	fmt.Println("  -h, --height HEIGHT    Set the image height")
+	fmt.Println("      --direct           Display image directly in terminal")
 	fmt.Println("      --help             Print this help text")
 	fmt.Println()
-	fmt.Println("If no options are provided, howdy fetches the latest XKCD comic by default.")
+	fmt.Println("If no options are provided, howdy fetches the latest XKCD comic.")
 }
 
-func getLatestComic() (path string, err error) {
+type Image struct {
+	Number int
+	Title  string
+	Alt    string
+	Path   string
+}
+
+// Download image to /tmp with caching
+func downloadImage(comic *xkcd.Comic) (*Image, error) {
+	extension := filepath.Ext(comic.ImageURL)
+	filename := fmt.Sprintf("xkcd_%d%s", comic.Number, extension)
+	filepath := filepath.Join("/tmp", filename)
+
+	image := &Image{
+		Number: comic.Number,
+		Title:  comic.Title,
+		Alt:    comic.Alt,
+		Path:   filepath,
+	}
+
+	// Check if file already exists
+	if _, err := os.Stat(filepath); err == nil {
+		return image, nil
+	}
+
+	// Download the image
+	resp, err := http.Get(comic.ImageURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download image: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to download image: HTTP %d", resp.StatusCode)
+	}
+
+	// Create the file
+	file, err := os.Create(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file: %v", err)
+	}
+	defer file.Close()
+
+	// Copy the response body to file
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save image: %v", err)
+	}
+
+	return image, nil
+}
+
+func getLatestComic() (image *Image, err error) {
 	client := xkcd.NewClient()
 	ctx := context.Background()
 	comic, err := client.Latest(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return comic.ImageURL, nil
+
+	// Download the image
+	return downloadImage(&comic)
 }
 
-func getComic(id int) (path string, err error) {
+func getComic(id int) (image *Image, err error) {
 	client := xkcd.NewClient()
 	ctx := context.Background()
 	comic, err := client.Get(ctx, id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return comic.ImageURL, nil
+
+	// Download the image
+	return downloadImage(&comic)
 }
 
-func getRandomImageFromDir(dir string) (string, error) {
+func getRandomImageFromDir(dir string) (*Image, error) {
 	// Support common image formats
 	patterns := []string{"*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.webp"}
 	var images []string
@@ -110,16 +173,41 @@ func getRandomImageFromDir(dir string) (string, error) {
 	}
 
 	if len(images) == 0 {
-		return "", fmt.Errorf("no images found in %s", dir)
+		return nil, fmt.Errorf("no images found in %s", dir)
 	}
 
 	randomIndex := make([]byte, 1)
 	_, err := rand.Read(randomIndex)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return images[int(randomIndex[0])%len(images)], nil
+	path := images[int(randomIndex[0])%len(images)]
+	title := filepath.Base(path)
+
+	return &Image{Title: title, Path: path}, nil
+}
+
+// Check if a command exists in PATH
+func commandExists(cmd string) bool {
+	_, err := exec.LookPath(cmd)
+	return err == nil
+}
+
+// Display image directly in terminal using available tools
+func displayImageDirect(imagePath string, config *Config) error {
+	args := []string{imagePath}
+	if config.width > 0 {
+		args = append(args, "-w", fmt.Sprintf("%d", config.width))
+	}
+	if config.height > 0 {
+		args = append(args, "-h", fmt.Sprintf("%d", config.height))
+	}
+	cmd := exec.Command("viu", args...)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func convertToASCII(imagePath string, config *Config) (string, error) {
@@ -157,6 +245,17 @@ func convertToASCII(imagePath string, config *Config) (string, error) {
 	return aic_package.Convert(imagePath, flags)
 }
 
+func printImageInfo(image *Image) {
+	if image.Number != 0 {
+		fmt.Printf("%d: %s\n", image.Number, image.Title)
+	} else {
+		fmt.Printf("%s\n", image.Title)
+	}
+	if image.Alt != "" {
+		fmt.Printf("%s\n", image.Alt)
+	}
+}
+
 func main() {
 	config := parseFlags()
 
@@ -165,41 +264,59 @@ func main() {
 		return
 	}
 
-	var imagePath string
+	var image *Image
 	var err error
 
 	// Determine image source based on flags
 	switch {
 	case config.file != "":
-		imagePath = config.file
+		image = &Image{
+			Title: filepath.Base(config.file),
+			Path:  config.file,
+		}
 
 	case config.directory != "":
-		imagePath, err = getRandomImageFromDir(config.directory)
+		image, err = getRandomImageFromDir(config.directory)
 		if err != nil {
 			fmt.Printf("Error getting random image from directory: %v\n", err)
 			os.Exit(1)
 		}
 
 	case config.id != 0:
-		imagePath, err = getComic(config.id)
+		image, err = getComic(config.id)
 		if err != nil {
 			fmt.Printf("Error fetching comic with ID %d: %v\n", config.id, err)
 			os.Exit(1)
 		}
 
 	default:
-		imagePath, err = getLatestComic()
+		image, err = getLatestComic()
 		if err != nil {
 			fmt.Printf("Error fetching comic: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
-	asciiArt, err := convertToASCII(imagePath, config)
+	defer printImageInfo(image)
+
+	if config.direct {
+		if !commandExists("viu") {
+			fmt.Println("Error: 'viu' is required for direct image display.")
+			os.Exit(1)
+		}
+
+		err = displayImageDirect(image.Path, config)
+		if err == nil {
+			fmt.Printf("\n")
+			return
+		}
+		// If viu fails, fallback to ASCII conversion
+	}
+
+	asciiArt, err := convertToASCII(image.Path, config)
 	if err != nil {
 		fmt.Printf("Error converting image to ASCII: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Printf("%v\n\n%s\n", asciiArt, imagePath)
+	fmt.Printf("%v\n\n", asciiArt)
 }

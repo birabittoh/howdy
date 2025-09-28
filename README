@@ -1,8 +1,7 @@
 howdy
 -----
 
-A tool that diplays either XKCD comics or your own pictures as
-ASCII art inside your terminal.
+Displays XKCD comics or your own images in the terminal.
 
 Usage: howdy [OPTIONS]
 
@@ -15,41 +14,40 @@ Options:
   -g, --grayscale        Disable color output
   -w, --width WIDTH      Set the image width
   -h, --height HEIGHT    Set the image height
+      --direct           Display image directly in terminal
       --help             Print this help text
 
-If no options are provided, howdy fetches the latest XKCD comic by default.
-
-
-INSTALLING
-
-```
-git clone http://github.com/birabittoh/howdy
-cd howdy
-go build
-cp howdy ~/.local/bin
-```
+If no options are provided, howdy fetches the latest XKCD comic.
 
 
 EXAMPLES
 
 ```
-# Prints XKCD comic #599 with braille symbols and a fixed width of 100
-howdy --id 599 --braille --width 100
+# Prints XKCD comic #599 directly using viu
+howdy --id 599 --direct
 ```
 
 ```
-# Prints the latest XKCD comic with braille symbols (in color)
-howdy --braille
+# Prints the latest XKCD comic with braille symbols and fixed width
+howdy --braille --width 100
 ```
 
 ```
-# Prints a random picture from the provided path with the default symbols
+# Prints a random picture from the provided path using the default symbols
 howdy --directory ~/Pictures/Anime
 ```
 
 ```
 # Prints the selected picture only using the "9" character
 howdy --file ~/Pictures/Anime/cirno.png --symbols 9
+```
+
+INSTALL
+
+```
+git clone https://github.com/birabittoh/howdy.git
+cd howdy
+go build && mv howdy ~/.local/bin
 ```
 
 
