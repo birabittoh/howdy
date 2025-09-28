@@ -144,12 +144,14 @@ func convertToASCII(imagePath string, config *Config) (string, error) {
 	flags.Dither = true
 	flags.Braille = false
 	flags.Complex = true
+	flags.CharBackgroundColor = true
 
 	// Set symbols vs braille
 	if config.symbols != "" {
 		flags.CustomMap = config.symbols
 	} else if config.braille {
 		flags.Braille = true
+		flags.CharBackgroundColor = false
 	}
 
 	return aic_package.Convert(imagePath, flags)
